@@ -59,10 +59,13 @@ export const HeroSection: React.FC = () => {
 
       if (error) {
         console.error('Error analyzing image:', error);
+        const msg = (error as any)?.message?.includes('non-2xx')
+          ? 'The AI is busy (rate limited). Please try again in a few seconds.'
+          : 'Failed to analyze the image. Please try again.';
         toast({
-          title: "Analysis failed",
-          description: "Failed to analyze the image. Please try again.",
-          variant: "destructive"
+          title: 'Analysis failed',
+          description: msg,
+          variant: 'destructive'
         });
         return;
       }

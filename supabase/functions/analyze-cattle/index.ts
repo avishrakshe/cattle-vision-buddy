@@ -40,18 +40,20 @@ serve(async (req) => {
       );
     }
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${openAIApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o',
-        messages: [
-          {
-            role: 'system',
-            content: `You are an expert in Indian cattle and buffalo breed identification. Analyze the image and identify the breed with the following Indian breeds:
+    const makeRequest = async () => {
+      return await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${openAIApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          response_format: { type: 'json_object' },
+          messages: [
+            {
+              role: 'system',
+              content: `You are an expert in Indian cattle and buffalo breed identification. Analyze the image and identify the breed with the following Indian breeds:
 
 CATTLE BREEDS:
 - Gir: Gujarat origin, distinctive hump, long ears, white-brown coat, 8-12 L/day milk, disease resistant
@@ -79,52 +81,71 @@ Respond in JSON format with:
   "specialty": "primary specialty/advantage",
   "description": "detailed description about the breed"
 }`
-          },
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: 'Please analyze this image and identify the cattle or buffalo breed.'
-              },
-              {
-                type: 'image_url',
-                image_url: {
-                  url: image
+            },
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'text',
+                  text: 'Please analyze this image and identify the cattle or buffalo breed.'
+                },
+                {
+                  type: 'image_url',
+                  image_url: {
+                    url: image
+                  }
                 }
-              }
-            ]
-          }
-        ],
-        max_tokens: 1000,
-        temperature: 0.3
-      }),
-    });
+              ]
+            }
+          ],
+          max_tokens: 1000,
+          temperature: 0.3
+        }),
+      });
+    };
+
+    let response = await makeRequest();
+    if (response.status === 429) {
+      console.error('OpenAI API rate limited, retrying...');
+      await new Promise((r) => setTimeout(r, 1200));
+      response = await makeRequest();
+    }
 
     if (!response.ok) {
-      console.error('OpenAI API error:', response.status, response.statusText);
+      const text = await response.text();
+      console.error('OpenAI API error:', response.status, response.statusText, text);
+      const status = response.status === 429 ? 429 : 500;
+      const msg = response.status === 429 ? 'Rate limited by OpenAI. Please try again shortly.' : 'Failed to analyze image';
       return new Response(
-        JSON.stringify({ error: 'Failed to analyze image' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: msg }),
+        { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     const data = await response.json();
-    const content = data.choices[0].message.content;
+    const content = data.choices?.[0]?.message?.content ?? '';
     
     console.log('OpenAI response:', content);
     
     try {
-      const analysis: BreedAnalysis = JSON.parse(content);
+      let jsonText = content;
+      if (typeof jsonText !== 'string') jsonText = String(jsonText ?? '');
+      // Attempt to extract JSON object if the model wrapped it
+      const start = jsonText.indexOf('{');
+      const end = jsonText.lastIndexOf('}');
+      if (start !== -1 && end !== -1) {
+        jsonText = jsonText.slice(start, end + 1);
+      }
+      const analysis: BreedAnalysis = JSON.parse(jsonText);
       
       return new Response(
         JSON.stringify({ success: true, analysis }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     } catch (parseError) {
-      console.error('Failed to parse OpenAI response:', parseError);
+      console.error('Failed to parse OpenAI response:', parseError, 'content:', content);
       return new Response(
-        JSON.stringify({ error: 'Failed to parse analysis results' }),
+        JSON.stringify({ error: 'AI response parsing failed. Please retry.' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
