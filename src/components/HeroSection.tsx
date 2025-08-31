@@ -1,14 +1,95 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { FileUpload } from '@/components/ui/file-upload';
-import { Brain, Zap, Shield } from 'lucide-react';
+import { Brain, Zap, Shield, Loader2 } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 import heroImage from '@/assets/hero-bg.jpg';
 
+interface BreedAnalysis {
+  breedName: string;
+  confidence: number;
+  type: 'cattle' | 'buffalo';
+  origin: string;
+  characteristics: string[];
+  milkYield: string;
+  specialty: string;
+  description: string;
+}
+
 export const HeroSection: React.FC = () => {
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysis, setAnalysis] = useState<BreedAnalysis | null>(null);
+  const { toast } = useToast();
+
   const handleFileSelect = (files: File[]) => {
-    console.log('Selected files:', files);
-    // TODO: Implement file processing logic
+    setSelectedFiles(files);
+    setAnalysis(null);
+  };
+
+  const convertFileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = error => reject(error);
+    });
+  };
+
+  const analyzeImage = async () => {
+    if (selectedFiles.length === 0) {
+      toast({
+        title: "No image selected",
+        description: "Please upload an image first",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsAnalyzing(true);
+
+    try {
+      const base64Image = await convertFileToBase64(selectedFiles[0]);
+      
+      const { data, error } = await supabase.functions.invoke('analyze-cattle', {
+        body: { image: base64Image }
+      });
+
+      if (error) {
+        console.error('Error analyzing image:', error);
+        toast({
+          title: "Analysis failed",
+          description: "Failed to analyze the image. Please try again.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      if (data.success) {
+        setAnalysis(data.analysis);
+        toast({
+          title: "Analysis complete",
+          description: `Identified as ${data.analysis.breedName} with ${data.analysis.confidence}% confidence`,
+        });
+      } else {
+        toast({
+          title: "Analysis failed",
+          description: data.error || "Failed to analyze the image",
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred",
+        variant: "destructive"
+      });
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   return (
@@ -92,6 +173,71 @@ export const HeroSection: React.FC = () => {
                 </div>
                 
                 <FileUpload onFileSelect={handleFileSelect} />
+                
+                {selectedFiles.length > 0 && (
+                  <Button 
+                    onClick={analyzeImage} 
+                    disabled={isAnalyzing}
+                    className="w-full"
+                    size="lg"
+                  >
+                    {isAnalyzing ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Analyzing...
+                      </>
+                    ) : (
+                      'Analyze Breed'
+                    )}
+                  </Button>
+                )}
+
+                {analysis && (
+                  <Card className="p-6 bg-background border border-primary/20">
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-xl font-bold text-primary">{analysis.breedName}</h4>
+                        <div className="text-sm bg-primary/10 text-primary px-3 py-1 rounded-full">
+                          {analysis.confidence}% confidence
+                        </div>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                          <span className="font-medium">Type:</span> {analysis.type}
+                        </div>
+                        <div>
+                          <span className="font-medium">Origin:</span> {analysis.origin}
+                        </div>
+                        <div>
+                          <span className="font-medium">Milk Yield:</span> {analysis.milkYield}
+                        </div>
+                        <div>
+                          <span className="font-medium">Specialty:</span> {analysis.specialty}
+                        </div>
+                      </div>
+
+                      <div>
+                        <p className="font-medium mb-2">Key Characteristics:</p>
+                        <div className="flex flex-wrap gap-2">
+                          {analysis.characteristics.map((char, index) => (
+                            <span 
+                              key={index}
+                              className="text-xs bg-muted px-2 py-1 rounded-md"
+                            >
+                              {char}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <p className="font-medium mb-2">About this breed:</p>
+                        <p className="text-sm text-muted-foreground">{analysis.description}</p>
+                      </div>
+                    </div>
+                  </Card>
+                )}
                 
                 <div className="text-center text-sm text-muted-foreground">
                   Supports: Gir, Sahiwal, Red Sindhi, Murrah, Jaffarabadi & 15+ more breeds
