@@ -22,6 +22,7 @@ export const HeroSection: React.FC = () => {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState<BreedAnalysis | null>(null);
+  const [cooldown, setCooldown] = useState(0);
   const { toast } = useToast();
 
   const handleFileSelect = (files: File[]) => {
@@ -29,7 +30,7 @@ export const HeroSection: React.FC = () => {
     setAnalysis(null);
   };
 
-  const convertFileToBase64 = (file: File, maxDim = 1024): Promise<string> => {
+  const convertFileToBase64 = (file: File, maxDim = 896): Promise<string> => {
     // Downscale large images to reduce token usage and rate-limit pressure
     return new Promise((resolve, reject) => {
       const img = new Image();
@@ -49,7 +50,7 @@ export const HeroSection: React.FC = () => {
         if (!ctx) return reject(new Error('Canvas not supported'));
         ctx.drawImage(img, 0, 0, width, height);
         // Use JPEG with reasonable quality for much smaller payloads
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
         resolve(dataUrl);
       };
       img.onerror = (e) => reject(e);
@@ -66,6 +67,10 @@ export const HeroSection: React.FC = () => {
       });
       return;
     }
+    if (cooldown > 0) {
+      toast({ title: 'Please wait', description: `Retry in ${cooldown}s due to rate limit.` });
+      return;
+    }
 
     setIsAnalyzing(true);
 
@@ -79,7 +84,8 @@ export const HeroSection: React.FC = () => {
       if (error) {
         console.error('Error analyzing image:', error);
         const msgText = String((error as any)?.message || '');
-        const isRateLimited = msgText.includes('429') || msgText.toLowerCase().includes('rate limited');
+        const status = (error as any)?.status;
+        const isRateLimited = status === 429 || msgText.includes('429') || msgText.toLowerCase().includes('rate limited');
         const isMissingKey = msgText.toLowerCase().includes('api key not configured');
         const msg = isRateLimited
           ? 'AI is rate limited. Please retry in a few seconds.'
@@ -87,6 +93,18 @@ export const HeroSection: React.FC = () => {
           ? 'Server is missing the OpenAI API key. Please configure it in Supabase secrets.'
           : 'Failed to analyze the image. Please try again.';
         toast({ title: 'Analysis failed', description: msg, variant: 'destructive' });
+        if (isRateLimited) {
+          setCooldown(10);
+          const interval = setInterval(() => {
+            setCooldown((prev) => {
+              if (prev <= 1) {
+                clearInterval(interval);
+                return 0;
+              }
+              return prev - 1;
+            });
+          }, 1000);
+        }
         return;
       }
 
@@ -200,7 +218,7 @@ export const HeroSection: React.FC = () => {
                 {selectedFiles.length > 0 && (
                   <Button 
                     onClick={analyzeImage} 
-                    disabled={isAnalyzing}
+                    disabled={isAnalyzing || cooldown > 0}
                     className="w-full"
                     size="lg"
                   >
@@ -209,6 +227,8 @@ export const HeroSection: React.FC = () => {
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                         Analyzing...
                       </>
+                    ) : cooldown > 0 ? (
+                      `Retry in ${cooldown}s`
                     ) : (
                       'Analyze Breed'
                     )}
