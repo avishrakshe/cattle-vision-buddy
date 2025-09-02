@@ -53,41 +53,14 @@ serve(async (req) => {
           messages: [
             {
               role: 'system',
-              content: `You are an expert in Indian cattle and buffalo breed identification. Analyze the image and identify the breed with the following Indian breeds:
-
-CATTLE BREEDS:
-- Gir: Gujarat origin, distinctive hump, long ears, white-brown coat, 8-12 L/day milk, disease resistant
-- Sahiwal: Punjab origin, red-brown coat, medium hump, droopy ears, 10-14 L/day milk, heat tolerant
-- Red Sindhi: Sindh origin, red coat, compact size, 6-10 L/day milk, drought resistant
-- Kankrej: Gujarat origin, large size, silver-grey coat, lyre-shaped horns, 8-12 L/day milk, dual purpose
-- Ongole: Andhra Pradesh origin, white coat, large hump, short horns, drought resistant, zebu type
-- Hariana: Haryana origin, white-grey coat, medium hump, compact build, 6-8 L/day milk
-
-BUFFALO BREEDS:
-- Murrah: Haryana/Punjab origin, curved horns, black coat, 12-15 L/day milk, premium milk producer
-- Jaffarabadi: Gujarat origin, large size, curved horns, dark coat, 10-12 L/day milk, largest buffalo breed
-- Mehsana: Gujarat origin, medium size, curved horns, dark grey coat, 8-10 L/day milk, good draught animal
-- Surti: Gujarat origin, compact size, curved horns, grey-black coat, 6-8 L/day milk, high fat content
-- Nagpuri: Maharashtra origin, medium size, straight horns, dark coat, 8-10 L/day milk, heat tolerant
-
-Respond in JSON format with:
-{
-  "breedName": "exact breed name",
-  "confidence": confidence percentage (0-100),
-  "type": "cattle" or "buffalo",
-  "origin": "state/region of origin",
-  "characteristics": ["key physical features"],
-  "milkYield": "milk production range",
-  "specialty": "primary specialty/advantage",
-  "description": "detailed description about the breed"
-}`
+              content: `Identify Indian cattle/buffalo breed. Key breeds: Gir (Gujarat, white-brown, 8-12L milk), Sahiwal (Punjab, red-brown, 10-14L), Murrah (black buffalo, 12-15L), Jaffarabadi (large buffalo, 10-12L). JSON: {"breedName":"name","confidence":0-100,"type":"cattle/buffalo","origin":"state","characteristics":["feature1","feature2"],"milkYield":"range","specialty":"advantage","description":"brief"}`
             },
             {
               role: 'user',
               content: [
                 {
                   type: 'text',
-                  text: 'Please analyze this image and identify the cattle or buffalo breed.'
+                  text: 'Identify breed from image.'
                 },
                 {
                   type: 'image_url',
@@ -98,8 +71,8 @@ Respond in JSON format with:
               ]
             }
           ],
-          max_tokens: 400,
-          temperature: 0.3
+          max_tokens: 300,
+          temperature: 0.2
         }),
       });
     };
@@ -107,10 +80,10 @@ Respond in JSON format with:
     let response = await makeRequest();
     if (response.status === 429) {
       console.error('OpenAI API rate limited, retrying with backoff...');
-      // Exponential backoff with jitter: 3 total attempts
-      const delays = [1200, 2500];
+      // Enhanced exponential backoff: 4 total attempts with longer delays
+      const delays = [2000, 5000, 10000];
       for (const delay of delays) {
-        await new Promise((r) => setTimeout(r, delay + Math.floor(Math.random() * 300)));
+        await new Promise((r) => setTimeout(r, delay + Math.floor(Math.random() * 1000)));
         response = await makeRequest();
         if (response.ok) break;
         if (response.status !== 429) break;

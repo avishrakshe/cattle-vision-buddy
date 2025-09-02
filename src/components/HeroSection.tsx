@@ -30,7 +30,7 @@ export const HeroSection: React.FC = () => {
     setAnalysis(null);
   };
 
-  const convertFileToBase64 = (file: File, maxDim = 896): Promise<string> => {
+  const convertFileToBase64 = (file: File, maxDim = 768): Promise<string> => {
     // Downscale large images to reduce token usage and rate-limit pressure
     return new Promise((resolve, reject) => {
       const img = new Image();
@@ -49,8 +49,8 @@ export const HeroSection: React.FC = () => {
         const ctx = canvas.getContext('2d');
         if (!ctx) return reject(new Error('Canvas not supported'));
         ctx.drawImage(img, 0, 0, width, height);
-        // Use JPEG with reasonable quality for much smaller payloads
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+        // Use JPEG with lower quality for much smaller payloads
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
         resolve(dataUrl);
       };
       img.onerror = (e) => reject(e);
@@ -94,7 +94,7 @@ export const HeroSection: React.FC = () => {
           : 'Failed to analyze the image. Please try again.';
         toast({ title: 'Analysis failed', description: msg, variant: 'destructive' });
         if (isRateLimited) {
-          setCooldown(10);
+          setCooldown(30);
           const interval = setInterval(() => {
             setCooldown((prev) => {
               if (prev <= 1) {
