@@ -98,7 +98,7 @@ Respond in JSON format with:
               ]
             }
           ],
-          max_tokens: 1000,
+          max_tokens: 400,
           temperature: 0.3
         }),
       });
@@ -106,9 +106,15 @@ Respond in JSON format with:
 
     let response = await makeRequest();
     if (response.status === 429) {
-      console.error('OpenAI API rate limited, retrying...');
-      await new Promise((r) => setTimeout(r, 1200));
-      response = await makeRequest();
+      console.error('OpenAI API rate limited, retrying with backoff...');
+      // Exponential backoff with jitter: 3 total attempts
+      const delays = [1200, 2500];
+      for (const delay of delays) {
+        await new Promise((r) => setTimeout(r, delay + Math.floor(Math.random() * 300)));
+        response = await makeRequest();
+        if (response.ok) break;
+        if (response.status !== 429) break;
+      }
     }
 
     if (!response.ok) {

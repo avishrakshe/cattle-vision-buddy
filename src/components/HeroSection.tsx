@@ -29,12 +29,31 @@ export const HeroSection: React.FC = () => {
     setAnalysis(null);
   };
 
-  const convertFileToBase64 = (file: File): Promise<string> => {
+  const convertFileToBase64 = (file: File, maxDim = 1024): Promise<string> => {
+    // Downscale large images to reduce token usage and rate-limit pressure
     return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = error => reject(error);
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let { width, height } = img;
+        if (width > height && width > maxDim) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        } else if (height >= width && height > maxDim) {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return reject(new Error('Canvas not supported'));
+        ctx.drawImage(img, 0, 0, width, height);
+        // Use JPEG with reasonable quality for much smaller payloads
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        resolve(dataUrl);
+      };
+      img.onerror = (e) => reject(e);
+      img.src = URL.createObjectURL(file);
     });
   };
 
@@ -59,14 +78,15 @@ export const HeroSection: React.FC = () => {
 
       if (error) {
         console.error('Error analyzing image:', error);
-        const msg = (error as any)?.message?.includes('non-2xx')
-          ? 'The AI is busy (rate limited). Please try again in a few seconds.'
+        const msgText = String((error as any)?.message || '');
+        const isRateLimited = msgText.includes('429') || msgText.toLowerCase().includes('rate limited');
+        const isMissingKey = msgText.toLowerCase().includes('api key not configured');
+        const msg = isRateLimited
+          ? 'AI is rate limited. Please retry in a few seconds.'
+          : isMissingKey
+          ? 'Server is missing the OpenAI API key. Please configure it in Supabase secrets.'
           : 'Failed to analyze the image. Please try again.';
-        toast({
-          title: 'Analysis failed',
-          description: msg,
-          variant: 'destructive'
-        });
+        toast({ title: 'Analysis failed', description: msg, variant: 'destructive' });
         return;
       }
 
